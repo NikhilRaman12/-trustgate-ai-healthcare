@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "ValidationRecord": {
+      "title": "Validation Record",
+      "description": "A record of a healthcare input validation session.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user ID of the person who ran the validation." },
+        "input_text": { "type": "string", "description": "The original unstructured text input." },
+        "domain": { "type": "string" },
+        "confidence_score": { "type": "number" },
+        "risk_level": { "type": "string", "enum": ["low", "medium", "high"] },
+        "final_decision": { "type": "string", "enum": ["APPROVE", "WARNING", "BLOCK"] },
+        "recommendation": { "type": "string" },
+        "issues_detected": { "type": "array", "items": { "type": "string" } },
+        "structured_data": {
+          "type": "object",
+          "properties": {
+            "symptoms": { "type": "array", "items": { "type": "string" } },
+            "medications": { "type": "array", "items": { "type": "string" } },
+            "allergies": { "type": "array", "items": { "type": "string" } },
+            "medical_history": { "type": "array", "items": { "type": "string" } },
+            "lab_values": { "type": "object" },
+            "patient_context": { "type": "object" },
+            "missing_fields": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "processing_details": {
+          "type": "object",
+          "properties": {
+            "completeness": { "type": "number" },
+            "relevance": { "type": "number" },
+            "consistency": { "type": "number" },
+            "risk_penalty": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "input_text", "domain", "confidence_score", "risk_level", "final_decision", "createdAt"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "Basic user profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/validations/{validationId}": {
+      "schema": "ValidationRecord",
+      "description": "Collection of all healthcare validation records."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    }
+  }
+}

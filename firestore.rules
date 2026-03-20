@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (matches auth.uid)
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required, email format)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional, URL format)
+    //   - role: string (required, enum: ['user', 'admin'])
+    //
+    // Collection: validations
+    // Document ID: validationId
+    // Fields:
+    //   - uid: string (required, immutable, matches owner)
+    //   - input_text: string (required, max 5000 chars)
+    //   - domain: string (required)
+    //   - confidence_score: number (required, 0-1)
+    //   - risk_level: string (required, enum: ['low', 'medium', 'high'])
+    //   - final_decision: string (required, enum: ['APPROVE', 'WARNING', 'BLOCK'])
+    //   - recommendation: string (required)
+    //   - issues_detected: list (required)
+    //   - structured_data: map (required, with symptoms, medications, allergies, medical_history, lab_values, patient_context, missing_fields)
+    //   - processing_details: map (required)
+    //   - has_files: boolean (optional)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "nikhilraman1203@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidValidation(data) {
+      return hasOnlyAllowedFields(['uid', 'input_text', 'domain', 'confidence_score', 'risk_level', 'final_decision', 'recommendation', 'issues_detected', 'structured_data', 'processing_details', 'createdAt', 'has_files']) &&
+             data.uid == request.auth.uid &&
+             data.input_text is string && data.input_text.size() <= 5000 &&
+             data.confidence_score is number && data.confidence_score >= 0 && data.confidence_score <= 1 &&
+             data.risk_level in ['low', 'medium', 'high'] &&
+             data.final_decision in ['APPROVE', 'WARNING', 'BLOCK'] &&
+             data.createdAt is timestamp &&
+             data.structured_data is map &&
+             data.structured_data.keys().hasAll(['symptoms', 'medications', 'allergies', 'medical_history', 'lab_values', 'patient_context', 'missing_fields']) &&
+             (!('has_files' in data) || data.has_files is bool);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /validations/{validationId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidValidation(request.resource.data);
+      allow update: if false; // Validations are immutable records
+      allow delete: if isDocOwner() || isAdmin();
+    }
+  }
+}

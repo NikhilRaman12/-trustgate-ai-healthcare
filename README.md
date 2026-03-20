@@ -1,33 +1,20 @@
-# TrustGate AI – Healthcare Decision Validator
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-TrustGate AI is a Gemini-powered system that converts unstructured medical input into structured, validated, and safe decision outputs.
+# Run and deploy your AI Studio app
 
-## Live Demo
-https://trustgate-ai-330590562274.us-west1.run.app
+This contains everything you need to run your app locally.
 
-## Problem
-Healthcare inputs are often incomplete and ambiguous, leading to unsafe or unreliable AI responses.
+View your app in AI Studio: https://ai.studio/apps/bb3f8876-d1da-49d8-9739-287ffdc51db9
 
-## Solution
-TrustGate AI validates input before generating decisions by analyzing:
-- Data completeness  
-- Context relevance  
-- Consistency  
-- Risk level  
+## Run Locally
 
-It then computes a confidence score and returns a safe decision.
+**Prerequisites:**  Node.js
 
-## How It Works
-Input → Gemini Processing → Validation Layer → Confidence Score → Decision (APPROVE / WARNING / BLOCK)
 
-## Example
-Input:  
-Patient has high leukocytes count and mild fever  
-
-Output:
-```json
-{
-  "confidence_score": 0.71,
-  "risk_level": "medium",
-  "final_decision": "WARNING"
-}
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

@@ -10,16 +10,22 @@ export enum FinalDecision {
   BLOCK = 'BLOCK'
 }
 
+export interface HealthcareFile {
+  inlineData: {
+    data: string;
+    mimeType: string;
+  };
+  name?: string;
+}
+
 export interface StructuredData {
-  symptoms?: string[];
-  test_indicators?: Array<{
-    name: string;
-    value: string | number;
-    reference_range?: string;
-    unit?: string;
-  }>;
-  missing_values?: string[];
-  patient_context?: string;
+  symptoms: string[];
+  medications: string[];
+  allergies: string[];
+  medical_history: string[];
+  lab_values: Record<string, string | number>;
+  patient_context: Record<string, string | number>;
+  missing_fields: string[];
 }
 
 export interface ProcessingDetails {
