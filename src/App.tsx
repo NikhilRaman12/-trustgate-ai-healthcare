@@ -30,12 +30,11 @@ import {
   Paperclip
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrustGateOrchestrator } from './core/app';
+import { validateHealthcareInput } from './services/geminiService';
 import { TrustGateResponse, FinalDecision, RiskLevel, HealthcareFile } from './core/types';
 import { LoadingState, ResultCard, SectionHeader } from './components/uiComponents';
 import { ErrorBoundary } from './components/errorBoundary';
-import { BigQueryLogger } from './infrastructure/bigquery';
-import { validateInput } from './utils';
+import { validateInput, generateTraceId } from './utils';
 import { 
   auth, 
   db, 
@@ -214,14 +213,13 @@ export default function App() {
 
     setLoading(true);
     setError(null);
-    const traceId = BigQueryLogger.generateTraceId();
+    const traceId = generateTraceId();
     
     try {
-      const response = await TrustGateOrchestrator.processRequest(
+      const response = await validateHealthcareInput(
         input, 
         files, 
-        user?.uid || null,
-        traceId
+        user?.uid || undefined
       );
       setResult(response);
 
@@ -339,9 +337,8 @@ export default function App() {
       </header>
 
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" role="main">
-        <ErrorBoundary>
-          <AnimatePresence mode="wait">
-            {view === 'validate' ? (
+        <AnimatePresence mode="wait">
+          {view === 'validate' ? (
             <motion.div 
               key="validate-view"
               initial={{ opacity: 0, y: 10 }}
@@ -784,7 +781,6 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-        </ErrorBoundary>
       </main>
       
       {/* Footer */}

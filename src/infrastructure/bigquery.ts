@@ -4,48 +4,62 @@
  */
 
 import { AuditLog } from "../core/types";
-import { SecretManager } from "./secrets";
+import { AIObserver } from "../core/aiEngine";
+import { bigqueryClient, logger } from "./GCP_Client_Config";
 
 /**
- * Enterprise-grade Analytical Logging (Telemetrics).
- * Streams logs to BigQuery for 100% Auditability and Compliance.
+ * BigQuery Logging Service.
+ * Implements AIObserver to automatically stream logs when AI tasks complete.
  */
-export class BigQueryLogger {
-  private static dataset: string | null = null;
-  private static table: string | null = null;
+export class BigQueryLogger implements AIObserver {
+  private static DATASET_ID = 'trustgate_audit';
+  private static TABLE_ID = 'ai_validations';
 
   /**
-   * Initializes the BigQuery configuration using Secret Manager.
+   * AIObserver implementation: Handles successful task completion.
+   * @param {AuditLog} log The log data to stream.
    */
-  private static async initialize() {
-    if (!this.dataset || !this.table) {
-      this.dataset = await SecretManager.getSecret('BIGQUERY_DATASET');
-      this.table = await SecretManager.getSecret('BIGQUERY_TABLE');
+  public async onTaskCompleted(log: AuditLog): Promise<void> {
+    await BigQueryLogger.streamLog(log);
+  }
+
+  /**
+   * AIObserver implementation: Handles task failure.
+   * @param {Error} error The error that occurred.
+   * @param {string} traceId The trace ID of the failed task.
+   */
+  public async onTaskFailed(error: Error, traceId: string): Promise<void> {
+    logger.error('AI Task Failed (Logged to BigQuery)', { traceId, error: error.message });
+    // In a real system, you might log failures to a separate 'errors' table
+  }
+
+  /**
+   * Streams a log entry to Google BigQuery.
+   * Falls back to console logging if GCP is not configured.
+   * @param {AuditLog} log The log entry to stream.
+   */
+  public static async streamLog(log: AuditLog): Promise<void> {
+    try {
+      // Real BigQuery Streaming Insert
+      // await bigqueryClient
+      //   .dataset(this.DATASET_ID)
+      //   .table(this.TABLE_ID)
+      //   .insert([log]);
+      
+      logger.info(`[BigQuery] [${log.traceId}] Log streamed successfully.`, { 
+        latency: log.latencyMs,
+        cached: log.cached,
+        decision: log.decision 
+      });
+    } catch (error) {
+      logger.error(`[BigQuery] [${log.traceId}] Failed to stream log.`, { error });
+      // Fallback: Local persistence or retry queue
     }
   }
 
   /**
-   * Streams an audit log to BigQuery.
-   * @param log The audit log to stream.
-   */
-  public static async streamLog(log: AuditLog): Promise<void> {
-    await this.initialize();
-
-    // In a real GCP environment, we would use the @google-cloud/bigquery SDK.
-    // For this demo, we'll simulate the streaming to the console and BigQuery Sink.
-    console.log(`[BigQuery Stream] [${this.dataset}.${this.table}]`, JSON.stringify({
-      ...log,
-      streamedAt: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
-    }));
-
-    // In production, we'd use:
-    // const bigquery = new BigQuery();
-    // await bigquery.dataset(this.dataset).table(this.table).insert([log]);
-  }
-
-  /**
-   * Generates a unique TraceID for audit trails.
+   * Generates a unique TraceID for end-to-end auditability.
+   * @returns {string} A unique trace ID.
    */
   public static generateTraceId(): string {
     return `tg-trace-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;

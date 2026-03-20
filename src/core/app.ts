@@ -7,6 +7,7 @@ import { CoreAI } from "./aiEngine";
 import { BigQueryLogger } from "../infrastructure/bigquery";
 import { TaskQueue } from "./taskQueue";
 import { TrustGateResponse, HealthcareFile } from "./types";
+import { logger } from "../infrastructure/GCP_Client_Config";
 
 /**
  * Enterprise-grade Orchestrator for TrustGate AI.
@@ -19,11 +20,11 @@ export class TrustGateOrchestrator {
   /**
    * Processes a healthcare validation request.
    * Wraps the lifecycle in a Try-Catch block for 100% Fault Tolerance.
-   * @param input The raw user input.
-   * @param files Optional healthcare files.
-   * @param userId The ID of the user making the request.
-   * @param traceId Optional TraceID from request headers.
-   * @returns The validated AI response.
+   * @param {string} input The raw user input.
+   * @param {HealthcareFile[]} files Optional healthcare files.
+   * @param {string | null} userId The ID of the user making the request.
+   * @param {string} traceId Optional TraceID from request headers.
+   * @returns {Promise<TrustGateResponse>} The validated AI response.
    */
   public static async processRequest(
     input: string,
@@ -34,7 +35,7 @@ export class TrustGateOrchestrator {
     const startTime = Date.now();
     
     try {
-      console.log(`[Orchestrator] [${traceId}] Starting request processing for user: ${userId}`);
+      logger.info(`[Orchestrator] [${traceId}] Starting request processing.`, { userId });
 
       // Use the TaskQueue for non-blocking, fault-tolerant execution
       const result = await this.taskQueue.enqueue(
@@ -43,12 +44,12 @@ export class TrustGateOrchestrator {
       );
 
       const latencyMs = Date.now() - startTime;
-      console.log(`[Orchestrator] [${traceId}] Request completed in ${latencyMs}ms.`);
+      logger.info(`[Orchestrator] [${traceId}] Request completed.`, { latencyMs });
 
       return result;
     } catch (error: any) {
       const latencyMs = Date.now() - startTime;
-      console.error(`[Orchestrator] [${traceId}] Request failed after ${latencyMs}ms: ${error.message}`);
+      logger.error(`[Orchestrator] [${traceId}] Request failed.`, { error: error.message, latencyMs });
 
       // Log failure to BigQuery for auditability
       await BigQueryLogger.streamLog({

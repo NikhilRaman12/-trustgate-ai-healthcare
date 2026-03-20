@@ -1,4 +1,4 @@
-import { TrustGateResponse, HealthcareFile } from "../types";
+import { TrustGateResponse, HealthcareFile } from "../core/types";
 
 export const validateHealthcareInput = async (input: string, files?: HealthcareFile[], userId?: string): Promise<TrustGateResponse> => {
   try {

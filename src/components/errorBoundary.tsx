@@ -3,81 +3,79 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { ErrorInfo, ReactNode } from "react";
-import { AlertTriangle, RefreshCcw } from "lucide-react";
-
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-interface State {
-  hasError: boolean;
-  error: Error | null;
-}
+import React from 'react';
+import { ErrorBoundary as ReactErrorBoundary, FallbackProps } from 'react-error-boundary';
+import { AlertCircle, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { motion } from 'motion/react';
 
 /**
- * Global Error Boundary for TrustGate AI.
+ * Fallback UI for the Error Boundary.
  * Catches any 'Chaos' events (timeouts/API failures) and provides safe fallbacks.
  */
-export class ErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
-
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("[ErrorBoundary] [Uncaught Error]:", error, errorInfo);
-  }
-
-  private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+  const handleReset = () => {
+    resetErrorBoundary();
     window.location.reload();
   };
 
-  public render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback as React.ReactElement;
-      }
+  return (
+    <div className="min-h-[400px] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-rose-100 p-8 text-center"
+      >
+        <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6">
+          <ShieldAlert className="w-10 h-10 text-rose-500" />
+        </div>
+        
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">System Interruption</h2>
+        <p className="text-slate-500 text-sm mb-8">
+          TrustGate AI encountered an unexpected "Chaos" event. 
+          Our self-healing protocols are active, but a manual reset may be required.
+        </p>
 
-      return (
-        <section 
-          className="p-12 flex flex-col items-center justify-center space-y-6 text-center"
-          role="alert"
-          aria-labelledby="error-heading"
-          aria-describedby="error-description"
-        >
-          <div className="p-4 bg-rose-100 rounded-full">
-            <AlertTriangle className="w-12 h-12 text-rose-600" aria-hidden="true" />
-          </div>
-          <div className="space-y-2">
-            <h2 id="error-heading" className="text-2xl font-bold text-slate-900 tracking-tight">
-              A System Error Occurred
-            </h2>
-            <p id="error-description" className="text-slate-500 max-w-md mx-auto">
-              The TrustGate AI engine encountered an unexpected failure. This could be due to a network timeout or API instability.
+        <div className="bg-rose-50 rounded-2xl p-4 mb-8 flex items-start gap-3 text-left">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-rose-900 uppercase tracking-wider">Error Details</p>
+            <p className="text-xs text-rose-700 mt-1 font-mono break-all">
+              {error instanceof Error ? error.message : "Unknown System Failure"}
             </p>
           </div>
-          <button
-            onClick={this.handleReset}
-            className="flex items-center space-x-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:bg-indigo-700 transition-all active:scale-95"
-            aria-label="Reset application and retry"
-          >
-            <RefreshCcw className="w-4 h-4" />
-            <span>Reset & Retry</span>
-          </button>
-        </section>
-      );
-    }
+        </div>
 
-    return this.props.children;
-  }
+        <button
+          onClick={handleReset}
+          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg"
+        >
+          <RefreshCcw className="w-5 h-5" />
+          Reset System State
+        </button>
+        
+        <p className="mt-6 text-[10px] text-slate-400 uppercase font-bold tracking-widest">
+          Safe Fallback Active ◈ Audit Log Generated
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
+/**
+ * Global Error Boundary Wrapper.
+ */
+export function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <ReactErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onReset={() => {
+        // Reset logic handled in FallbackComponent
+      }}
+      onError={(error, info) => {
+        console.error("Uncaught error:", error, info);
+      }}
+    >
+      {children}
+    </ReactErrorBoundary>
+  );
 }
