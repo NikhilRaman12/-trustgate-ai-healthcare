@@ -30,9 +30,12 @@ import {
   Paperclip
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { validateHealthcareInput } from './services/geminiService';
-import { TrustGateResponse, FinalDecision, RiskLevel, HealthcareFile } from './types';
-import { validateInput, getCompleteness } from './utils';
+import { TrustGateOrchestrator } from './core/app';
+import { TrustGateResponse, FinalDecision, RiskLevel, HealthcareFile } from './core/types';
+import { LoadingState, ResultCard, SectionHeader } from './components/uiComponents';
+import { ErrorBoundary } from './components/errorBoundary';
+import { BigQueryLogger } from './infrastructure/bigquery';
+import { validateInput } from './utils';
 import { 
   auth, 
   db, 
@@ -211,8 +214,15 @@ export default function App() {
 
     setLoading(true);
     setError(null);
+    const traceId = BigQueryLogger.generateTraceId();
+    
     try {
-      const response = await validateHealthcareInput(input, files);
+      const response = await TrustGateOrchestrator.processRequest(
+        input, 
+        files, 
+        user?.uid || null,
+        traceId
+      );
       setResult(response);
 
       // Save to Firestore if logged in
@@ -226,9 +236,9 @@ export default function App() {
           createdAt: Timestamp.now()
         });
       }
-    } catch (err) {
-      console.error(err);
-      setError('Failed to process the request. Please check your connection and try again.');
+    } catch (err: any) {
+      console.error(`[App] [${traceId}] Validation failed:`, err);
+      setError(`Failed to process the request (ID: ${traceId}). Please check your connection and try again.`);
     } finally {
       setLoading(false);
     }
@@ -278,7 +288,7 @@ export default function App() {
                 TrustGate <span className="text-indigo-600">AI</span>
               </h1>
               <p className="text-[10px] font-medium text-slate-400 mt-0.5">
-                Screen and safeguard Your Medical Aid
+                🛡️ Screen And Safeguard Your Medical Aid ◈
               </p>
             </div>
           </div>
@@ -329,8 +339,9 @@ export default function App() {
       </header>
 
       <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" role="main">
-        <AnimatePresence mode="wait">
-          {view === 'validate' ? (
+        <ErrorBoundary>
+          <AnimatePresence mode="wait">
+            {view === 'validate' ? (
             <motion.div 
               key="validate-view"
               initial={{ opacity: 0, y: 10 }}
@@ -500,10 +511,9 @@ export default function App() {
                       key="loading-state"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="h-full min-h-[400px] flex flex-col items-center justify-center space-y-4"
+                      className="h-full min-h-[400px] flex flex-col items-center justify-center"
                     >
-                      <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-                      <p className="text-slate-500 animate-pulse font-medium">Analyzing medical context...</p>
+                      <LoadingState message="Analyzing medical context with TrustGate AI..." />
                     </motion.div>
                   )}
 
@@ -515,26 +525,12 @@ export default function App() {
                       className="space-y-6"
                     >
                       {/* Decision Banner */}
-                      <div className={`p-6 rounded-2xl border shadow-sm ${getDecisionColor(result.final_decision)} flex items-start gap-4`} role="status">
-                        <div className="mt-1">{getDecisionIcon(result.final_decision)}</div>
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-xl font-bold">Decision: {result.final_decision}</h3>
-                            <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(result.recommendation);
-                                setToast("Recommendation copied!");
-                                setTimeout(() => setToast(null), 2000);
-                              }}
-                              className="text-[10px] font-bold uppercase tracking-wider bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
-                              aria-label="Copy recommendation to clipboard"
-                            >
-                              Copy
-                            </button>
-                          </div>
-                          <p className="text-sm opacity-90 mt-1 leading-relaxed">{result.recommendation}</p>
-                        </div>
-                      </div>
+                      <ResultCard 
+                        decision={result.final_decision}
+                        risk={result.risk_level}
+                        recommendation={result.recommendation}
+                        traceId={result.traceId}
+                      />
 
                       {/* Main Stats */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -788,6 +784,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </ErrorBoundary>
       </main>
       
       {/* Footer */}
