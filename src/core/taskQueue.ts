@@ -4,7 +4,7 @@
  */
 
 import PQueue from "p-queue";
-import { BigQueryLogger } from "../infrastructure/bigquery";
+import { AuditTrail } from "../infrastructure/bigquery";
 
 /**
  * Enterprise-grade Task Queue for Asynchronous Multimodal Processing.
@@ -16,7 +16,7 @@ export class TaskQueue {
 
   private constructor() {
     // Initialize P-Queue with concurrency limits to prevent API abuse
-    this.queue = new PQueue({ concurrency: 5 });
+    this.queue = new PQueue({ concurrency: 10 });
   }
 
   /**

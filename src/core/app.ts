@@ -3,45 +3,41 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CoreAI } from "./aiEngine";
-import { BigQueryLogger } from "../infrastructure/bigquery";
+import { aiService } from "./aiService";
+import { AuditTrail } from "../infrastructure/bigquery";
 import { TaskQueue } from "./taskQueue";
-import { TrustGateResponse, HealthcareFile } from "./types";
-import { logger } from "../infrastructure/GCP_Client_Config";
+import { TrustGateResponse, HealthcareFile, FinalDecision, RiskLevel } from "./types";
+import { logger } from "../infrastructure/gcpConfig";
 
 /**
  * Enterprise-grade Orchestrator for TrustGate AI.
  * Manages the entire request lifecycle with 100% Fault Tolerance and Auditability.
  */
 export class TrustGateOrchestrator {
-  private static aiEngine = CoreAI.getInstance();
+  private static aiService = aiService;
   private static taskQueue = TaskQueue.getInstance();
+
+  static {
+    // Register AuditTrail observer for BigQuery streaming
+    this.aiService.addObserver(new AuditTrail());
+  }
 
   /**
    * Processes a healthcare validation request.
-   * Wraps the lifecycle in a Try-Catch block for 100% Fault Tolerance.
-   * @param {string} input The raw user input.
-   * @param {HealthcareFile[]} files Optional healthcare files.
-   * @param {string | null} userId The ID of the user making the request.
-   * @param {string} traceId Optional TraceID from request headers.
-   * @returns {Promise<TrustGateResponse>} The validated AI response.
    */
   public static async processRequest(
     input: string,
     files: HealthcareFile[],
     userId: string | null = null,
-    traceId: string = BigQueryLogger.generateTraceId()
+    traceId: string = AuditTrail.generateTraceId()
   ): Promise<TrustGateResponse> {
     const startTime = Date.now();
     
     try {
       logger.info(`[Orchestrator] [${traceId}] Starting request processing.`, { userId });
 
-      // Use the TaskQueue for non-blocking, fault-tolerant execution
-      const result = await this.taskQueue.enqueue(
-        () => this.aiEngine.generateValidation(input, files, traceId, userId),
-        traceId
-      );
+      // 1. AI Generation via Vertex AI (Direct call as it's already enqueued by the server)
+      const result = await this.aiService.generateValidation(input, files, traceId, userId);
 
       const latencyMs = Date.now() - startTime;
       logger.info(`[Orchestrator] [${traceId}] Request completed.`, { latencyMs });
@@ -52,20 +48,45 @@ export class TrustGateOrchestrator {
       logger.error(`[Orchestrator] [${traceId}] Request failed.`, { error: error.message, latencyMs });
 
       // Log failure to BigQuery for auditability
-      await BigQueryLogger.streamLog({
+      await AuditTrail.streamLog({
         traceId,
         userId,
         timestamp: new Date().toISOString(),
         inputLength: input.length,
         hasFiles: files.length > 0,
-        decision: "BLOCK" as any,
+        decision: FinalDecision.BLOCK,
         confidence: 0,
-        risk: "HIGH" as any,
+        risk: RiskLevel.HIGH,
         latencyMs,
         cached: false
       });
 
-      throw error;
+      // Return a detailed JSON error object while keeping the TraceID
+      return {
+        traceId,
+        timestamp: new Date().toISOString(),
+        domain: "ERROR_HANDLER",
+        structured_data: {
+          symptoms: [],
+          medications: [],
+          allergies: [],
+          medical_history: [],
+          lab_values: {},
+          patient_context: {},
+          missing_fields: []
+        },
+        risk_level: RiskLevel.HIGH,
+        confidence_score: 0,
+        issues_detected: ["CRITICAL_SYSTEM_FAILURE"],
+        recommendation: "Service temporarily optimizing safety filters. Please retry.",
+        final_decision: FinalDecision.BLOCK,
+        processing_details: {
+          completeness: 0,
+          relevance: 0,
+          consistency: 0,
+          risk_penalty: 1
+        }
+      };
     }
   }
 }

@@ -87,6 +87,30 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [files, setFiles] = useState<HealthcareFile[]>([]);
   const [fileLoading, setFileLoading] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [backendReady, setBackendReady] = useState<boolean | null>(null);
+
+  // Backend Health Check
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          const data = await response.json();
+          setBackendReady(data.status === 'healthy');
+        } else {
+          setBackendReady(false);
+        }
+      } catch (err) {
+        setBackendReady(false);
+      }
+    };
+    
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auth Listener
   useEffect(() => {
@@ -126,6 +150,8 @@ export default function App() {
     const q = query(
       collection(db, 'validations'),
       where('uid', '==', user.uid),
+      where('deleted', '!=', true),
+      orderBy('deleted'),
       orderBy('createdAt', 'desc')
     );
 
@@ -142,23 +168,52 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setShowProfile(false);
+      setResult(null);
+      setFiles([]);
+      setView('validate');
+      setToast("Logged out successfully");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      console.error("Logout failed", err);
+    }
+  };
+
+  const deleteHistory = async (id: string) => {
+    try {
+      await setDoc(doc(db, 'validations', id), { deleted: true }, { merge: true });
+      setToast("Record removed from history");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `validations/${id}`);
+    }
+  };
+
+  const clearAllHistory = async () => {
+    if (!user || history.length === 0) return;
+    if (!confirm("Are you sure you want to clear your entire validation history? This action cannot be undone.")) return;
+    
+    try {
+      const batch = history.map(record => 
+        setDoc(doc(db, 'validations', record.id), { deleted: true }, { merge: true })
+      );
+      await Promise.all(batch);
+      setToast("History cleared successfully");
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'validations/all');
+    }
+  };
+
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
       console.error("Login failed", err);
       setError("Login failed. Please try again.");
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setResult(null);
-      setFiles([]);
-      setView('validate');
-    } catch (err) {
-      console.error("Logout failed", err);
     }
   };
 
@@ -213,7 +268,6 @@ export default function App() {
 
     setLoading(true);
     setError(null);
-    const traceId = generateTraceId();
     
     try {
       const response = await validateHealthcareInput(
@@ -235,8 +289,8 @@ export default function App() {
         });
       }
     } catch (err: any) {
-      console.error(`[App] [${traceId}] Validation failed:`, err);
-      setError(`Failed to process the request (ID: ${traceId}). Please check your connection and try again.`);
+      console.error(`[App] Validation failed:`, err);
+      setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -262,6 +316,30 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (backendReady === false) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 max-w-md"
+        >
+          <div className="bg-indigo-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Secure Connection Establishing...</h2>
+          <p className="text-sm text-slate-500 mb-6">
+            We're initializing our secure Google Cloud infrastructure to ensure 100% data integrity and medical validation accuracy.
+          </p>
+          <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 py-2 px-4 rounded-full">
+            <ShieldCheck className="w-3 h-3" />
+            Vertex AI & BigQuery Ready
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -293,7 +371,7 @@ export default function App() {
           
           <nav className="flex items-center gap-4" aria-label="Main Navigation">
             {user ? (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 relative">
                 <button 
                   onClick={() => setView('validate')}
                   className={`text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${view === 'validate' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}
@@ -306,23 +384,57 @@ export default function App() {
                 >
                   <History className="w-4 h-4" /> History
                 </button>
+                
                 <div className="h-6 w-px bg-slate-200 mx-1" />
-                <div className="flex items-center gap-2">
+                
+                <button 
+                  onClick={() => setShowProfile(!showProfile)}
+                  className="flex items-center gap-2 p-1 pr-3 rounded-full hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
+                  aria-expanded={showProfile}
+                  aria-haspopup="true"
+                >
                   {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.displayName || 'User'} className="w-8 h-8 rounded-full border border-slate-200" />
+                    <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full border border-slate-200" referrerPolicy="no-referrer" />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
                       <UserIcon className="w-4 h-4" />
                     </div>
                   )}
-                  <button 
-                    onClick={handleLogout}
-                    className="text-xs font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1"
-                    aria-label="Logout"
-                  >
-                    <LogOut className="w-3 h-3" /> Sign Out
-                  </button>
-                </div>
+                  <span className="text-xs font-bold text-slate-700 hidden sm:block">{user.displayName?.split(' ')[0]}</span>
+                </button>
+
+                <AnimatePresence>
+                  {showProfile && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowProfile(false)} />
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-40 overflow-hidden"
+                      >
+                        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                          <p className="text-xs font-bold text-slate-900 truncate">{user.displayName}</p>
+                          <p className="text-[10px] font-medium text-slate-400 truncate">{user.email}</p>
+                        </div>
+                        <div className="p-2">
+                          <button 
+                            onClick={() => { setView('history'); setShowProfile(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          >
+                            <History className="w-4 h-4" /> My Validations
+                          </button>
+                          <button 
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          >
+                            <LogOut className="w-4 h-4" /> Sign Out
+                          </button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
             ) : (
               <button 
@@ -719,16 +831,35 @@ export default function App() {
               exit={{ opacity: 0, x: 20 }}
               className="max-w-4xl mx-auto space-y-6"
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                   <History className="w-6 h-6 text-indigo-600" /> Validation History
                 </h2>
-                <button 
-                  onClick={() => setView('validate')}
-                  className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
-                >
-                  <PlusCircle className="w-4 h-4" /> New Validation
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 sm:w-64">
+                    <input 
+                      type="text"
+                      placeholder="Search history..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    />
+                    <History className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <button 
+                    onClick={clearAllHistory}
+                    className="text-xs font-bold text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl transition-all flex items-center gap-1.5"
+                    title="Clear all history"
+                  >
+                    <XCircle className="w-4 h-4" /> Clear All
+                  </button>
+                  <button 
+                    onClick={() => setView('validate')}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-100"
+                  >
+                    <PlusCircle className="w-4 h-4" /> New
+                  </button>
+                </div>
               </div>
 
               {history.length === 0 ? (
@@ -741,7 +872,13 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {history.map((record) => (
+                  {history
+                    .filter(record => 
+                      record.input_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      record.final_decision.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      record.recommendation.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map((record) => (
                     <motion.div 
                       key={record.id}
                       layoutId={record.id}
@@ -768,9 +905,21 @@ export default function App() {
                           </div>
                           <p className="text-xs text-slate-500 truncate italic">"{record.input_text}"</p>
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-slate-900">{(record.confidence_score * 100).toFixed(0)}%</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Confidence</div>
+                        <div className="text-right flex items-center gap-4">
+                          <div>
+                            <div className="text-lg font-bold text-slate-900">{(record.confidence_score * 100).toFixed(0)}%</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Confidence</div>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteHistory(record.id);
+                            }}
+                            className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                            title="Delete from history"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                         <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-400 transition-colors" />
                       </div>

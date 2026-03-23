@@ -4,7 +4,7 @@
  */
 
 import { TrustGateResponse } from "./types";
-import { BigQueryLogger } from "../infrastructure/bigquery";
+import { AuditTrail } from "../infrastructure/bigquery";
 
 /**
  * Enterprise-grade Validation Service for AI Safety and Compliance.
@@ -63,7 +63,7 @@ export class ValidationService {
     console.warn(`[ValidationService] [SENSITIVITY ALERT] [${traceId}]: ${reason}`);
     
     // Log alert to BigQuery for auditability
-    await BigQueryLogger.streamLog({
+    await AuditTrail.streamLog({
       traceId,
       userId: "SYSTEM",
       timestamp: new Date().toISOString(),

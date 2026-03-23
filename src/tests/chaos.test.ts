@@ -6,8 +6,8 @@
  */
 
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { CoreAI } from '../core/aiEngine';
-import { BigQueryLogger } from '../infrastructure/bigquery';
+import { aiService } from '../core/aiService';
+import { AuditTrail } from '../infrastructure/bigquery';
 
 describe('Production Resilience & Regression Suite', () => {
   
@@ -22,11 +22,11 @@ describe('Production Resilience & Regression Suite', () => {
   test('REGRESSION: AI Response Latency must be < 2000ms with Cache-Aside', async () => {
     const startTime = Date.now();
     // First call to populate cache
-    await CoreAI.getInstance().generateValidation('Test Query', [], 'reg-001');
+    await aiService.generateValidation('Test Query', [], 'reg-001');
     
     // Second call should hit cache
     const secondCallStart = Date.now();
-    await CoreAI.getInstance().generateValidation('Test Query', [], 'reg-002');
+    await aiService.generateValidation('Test Query', [], 'reg-002');
     const duration = Date.now() - secondCallStart;
     
     expect(duration).toBeLessThan(2000); 
@@ -38,13 +38,13 @@ describe('Production Resilience & Regression Suite', () => {
    */
   test('CHAOS: System must provide Cached Fallback when Cloud Function Times Out', async () => {
     // Populate cache first
-    await CoreAI.getInstance().generateValidation('Medical Validation', [], 'chaos-001');
+    await aiService.generateValidation('Medical Validation', [], 'chaos-001');
     
     // Simulate Network Partition/Service Failure
-    // Note: In a real test, we'd mock the AI instance inside CoreAI
+    // Note: In a real test, we'd mock the AI instance inside aiService
     // For this demo, we'll verify the cache-aside logic directly
     
-    const response = await CoreAI.getInstance().generateValidation('Medical Validation', [], 'chaos-002');
+    const response = await aiService.generateValidation('Medical Validation', [], 'chaos-002');
     // The response should be returned from cache even if we "failed" the AI call (simulated)
     expect(response.traceId).toBe('chaos-002');
   });
@@ -54,9 +54,9 @@ describe('Production Resilience & Regression Suite', () => {
    * Every transaction must successfully generate a BigQuery Schema Log via the Observer pattern.
    */
   test('AUDIT: Every transaction must successfully generate a BigQuery Schema Log', async () => {
-    const logSpy = vi.spyOn(BigQueryLogger, 'streamLog');
+    const logSpy = vi.spyOn(AuditTrail, 'streamLog');
     
-    await CoreAI.getInstance().generateValidation('Final Sync', [], 'audit-999');
+    await aiService.generateValidation('Final Sync', [], 'audit-999');
     
     expect(logSpy).toHaveBeenCalledWith(expect.objectContaining({
       traceId: 'audit-999'
